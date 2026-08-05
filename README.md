@@ -1,5 +1,5 @@
 # ✨GlowGuide-Ai
-An AI-powered skincare recommendation application that generates personalized skincare routines. Built using Machine Learning, Gradio, and Groq API.
+Personalized skincare recommendation engine using ML + Groq LLM to generate explainable, data-driven skincare routines through an interactive Gradio app.
 
 ---
 
