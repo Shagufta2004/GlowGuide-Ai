@@ -1,9 +1,12 @@
 
+# ============================================================
+# GLOWGUIDE AI - FINAL VERSION
+# ============================================================
+
 import os
 import joblib
 import pandas as pd
 import gradio as gr
-from groq import Groq
 
 
 # ============================================================
@@ -15,6 +18,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ml_model = joblib.load(
     os.path.join(BASE_DIR, "skincare_model.pkl")
 )
+
 label_encoders = joblib.load(
     os.path.join(BASE_DIR, "label_encoders.pkl")
 )
@@ -24,12 +28,14 @@ label_encoders = joblib.load(
 # 2. GROQ SETUP
 # ============================================================
 
+from groq import Groq
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
     raise ValueError(
         "GROQ_API_KEY is not set. "
-        "Please add your Groq API key in the notebook session."
+        "Please add your Groq API key in the environment variables."
     )
 
 client = Groq(api_key=GROQ_API_KEY)
@@ -41,7 +47,6 @@ GROQ_MODEL = "openai/gpt-oss-120b"
 # 3. DEFAULT OPTIONAL VALUES
 # ============================================================
 
-DEFAULT_SEASON = "Summer"
 DEFAULT_WATER = "1–2 L"
 DEFAULT_SLEEP = "6–8 hrs"
 DEFAULT_SUNSCREEN = "Sometimes"
@@ -58,7 +63,6 @@ def generate_skincare_report(
     skin,
     concern,
     budget,
-    sensitive,
     season,
     water,
     sleep,
@@ -69,64 +73,53 @@ def generate_skincare_report(
 
     try:
 
-        # ------------------------------------------------------
-        # REQUIRED INPUT VALIDATION
-        # ------------------------------------------------------
-
         if age is None:
             return """
-# 🌸 GlowGuide AI
-
-Please enter your **Age** to continue.
+<div class="error-box">
+Please enter your <b>Age</b> to continue.
+</div>
 """
 
         if not skin:
             return """
-# 🌸 GlowGuide AI
-
-Please select your **Skin Type** to continue.
+<div class="error-box">
+Please select your <b>Skin Type</b> to continue.
+</div>
 """
 
         if not concern:
             return """
-# 🌸 GlowGuide AI
-
-Please select your **Skin Concern** to continue.
+<div class="error-box">
+Please select your <b>Skin Concern</b> to continue.
+</div>
 """
 
         if not budget:
             return """
-# 🌸 GlowGuide AI
-
-Please select your **Budget** to continue.
+<div class="error-box">
+Please select your <b>Budget</b> to continue.
+</div>
 """
 
-        if not sensitive:
+        if not season:
             return """
-# 🌸 GlowGuide AI
-
-Please select whether you have **Sensitive Skin**.
+<div class="error-box">
+Please select your <b>Season</b> to continue.
+</div>
 """
 
+        # Automatically derive sensitive skin
+        sensitive = "Yes" if skin == "Sensitive" else "No"
 
-        # ------------------------------------------------------
-        # OPTIONAL INPUTS
-        # ------------------------------------------------------
-
-        season = season if season else DEFAULT_SEASON
+        # Optional defaults
         water = water if water else DEFAULT_WATER
         sleep = sleep if sleep else DEFAULT_SLEEP
         sunscreen = sunscreen if sunscreen else DEFAULT_SUNSCREEN
         makeup = makeup if makeup else DEFAULT_MAKEUP
         routine = routine if routine else DEFAULT_ROUTINE
 
-
-        # ------------------------------------------------------
-        # ENCODE INPUTS
-        # ------------------------------------------------------
-
+        # Encode inputs
         input_data = {
-
             "Age": age,
 
             "Skin_Type":
@@ -168,14 +161,9 @@ Please select whether you have **Sensitive Skin**.
                 )[0]
         }
 
-
         input_df = pd.DataFrame([input_data])
 
-
-        # ------------------------------------------------------
-        # MACHINE LEARNING PREDICTION
-        # ------------------------------------------------------
-
+        # ML prediction
         pred_class = ml_model.predict(input_df)[0]
 
         probabilities = ml_model.predict_proba(input_df)[0]
@@ -186,11 +174,7 @@ Please select whether you have **Sensitive Skin**.
             "Routine_Category"
         ].inverse_transform([pred_class])[0]
 
-
-        # ------------------------------------------------------
-        # GROQ PROMPT
-        # ------------------------------------------------------
-
+        # Groq prompt
         prompt = f"""
 
 You are GlowGuide AI, a personalized skincare assistant.
@@ -205,11 +189,13 @@ Age: {age}
 Skin Type: {skin}
 Skin Concern: {concern}
 Budget: {budget}
-Sensitive Skin: {sensitive}
+Season: {season}
+
+Sensitive Skin:
+Automatically determined from Skin Type = {sensitive}
 
 OPTIONAL DETAILS
 ----------------
-Season: {season}
 Water Intake: {water}
 Sleep Duration: {sleep}
 Sunscreen Usage: {sunscreen}
@@ -221,52 +207,52 @@ MACHINE LEARNING RESULT
 Predicted Routine: {predicted_routine}
 Confidence: {confidence:.1f}%
 
-
 Create ONLY these sections:
 
 ### 🌸 Why This Routine?
 Give 2-3 short bullet points explaining why this
 routine category fits the user's profile.
 
-### ☀️ Morning Routine
+### ☀️ Morning Routine — 5–7 minutes
 Give 4-5 simple numbered steps.
+Include an approximate time for each step.
 
-### 🌙 Night Routine
+### 🌙 Night Routine — 5–7 minutes
 Give 4-5 simple numbered steps.
+Include an approximate time for each step.
 
 ### 🧴 Ingredients to Look For
-Give 3-5 useful ingredients with very short explanations.
+Give 3-5 useful ingredients with short explanations.
 
 ### 🚫 Ingredients / Product Types to Be Careful With
 Give 2-4 concise points.
 
+### 🍎 Diet Recommendation
+Suggest practical skin-supportive foods.
+Mention when they can be consumed.
+Do not claim food can cure skin conditions.
+
+### 👩‍⚕️ Dermatologist Consultation
+Explain when the user should consider seeing a dermatologist.
+Do not diagnose the user.
+
 ### 💄 Makeup & Skincare Tips
-Give 2-3 concise tips if relevant.
+Give 2-3 concise tips.
 
 ### 🌿 Lifestyle & Seasonal Tips
-Give 3-4 concise tips based on the user's optional details.
+Give 3-4 concise tips.
 
 ### ⚠️ Precautions
 Give 2-3 short precautions.
 
-IMPORTANT:
-
-- Keep the complete response under 450 words.
-- Use short sentences.
-- Prefer bullet points.
-- Do not write long paragraphs.
-- Do not repeat the user's profile.
-- Do not diagnose medical conditions.
-- Do not prescribe medication.
-- Do not claim to cure diseases.
-- Mention professional dermatology advice when appropriate.
-- Keep the tone elegant, friendly and practical.
+Keep the complete response under 550 words.
+Use short sentences and bullet points.
+Do not diagnose medical conditions.
+Do not prescribe medication.
+Do not claim to cure diseases.
+Mention professional dermatology advice when appropriate.
+Keep the tone elegant, friendly and practical.
 """
-
-
-        # ------------------------------------------------------
-        # GROQ RESPONSE
-        # ------------------------------------------------------
 
         completion = client.chat.completions.create(
 
@@ -294,13 +280,7 @@ IMPORTANT:
             temperature=0.6
         )
 
-
         ai_response = completion.choices[0].message.content
-
-
-        # ------------------------------------------------------
-        # FINAL REPORT
-        # ------------------------------------------------------
 
         return f"""
 
@@ -334,18 +314,19 @@ medical or dermatological advice.
 
 """
 
-
     except Exception as e:
 
         return f"""
 
 <div class="error-box">
 
-### ❌ Unable to Generate Report
+<h3>❌ Unable to Generate Report</h3>
 
 Something went wrong while creating your GlowGuide report.
 
-`{str(e)}`
+<br><br>
+
+<code>{str(e)}</code>
 
 </div>
 
@@ -376,14 +357,8 @@ def chat_with_glowguide(message, history):
 
         ]
 
-
-        # ------------------------------------------------------
-        # HANDLE GRADIO CHAT HISTORY
-        # ------------------------------------------------------
-
         for item in history:
 
-            # Gradio message format
             if isinstance(item, dict):
 
                 role = item.get("role")
@@ -397,12 +372,9 @@ def chat_with_glowguide(message, history):
                     if content.strip():
 
                         groq_messages.append({
-
                             "role": role,
                             "content": content
-
                         })
-
 
                 elif isinstance(content, list):
 
@@ -422,62 +394,40 @@ def chat_with_glowguide(message, history):
 
                             text_parts.append(block)
 
-
                     combined_text = "\n".join(text_parts)
 
                     if combined_text.strip():
 
                         groq_messages.append({
-
                             "role": role,
                             "content": combined_text
-
                         })
 
-
-            # Older tuple format
             elif isinstance(item, (list, tuple)):
 
                 if len(item) >= 2:
 
                     user_message = item[0]
-
                     assistant_message = item[1]
 
                     if user_message:
 
                         groq_messages.append({
-
                             "role": "user",
                             "content": str(user_message)
-
                         })
 
                     if assistant_message:
 
                         groq_messages.append({
-
                             "role": "assistant",
                             "content": str(assistant_message)
-
                         })
 
-
-        # ------------------------------------------------------
-        # CURRENT MESSAGE
-        # ------------------------------------------------------
-
         groq_messages.append({
-
             "role": "user",
             "content": message
-
         })
-
-
-        # ------------------------------------------------------
-        # GROQ RESPONSE
-        # ------------------------------------------------------
 
         completion = client.chat.completions.create(
 
@@ -486,11 +436,10 @@ def chat_with_glowguide(message, history):
             messages=groq_messages,
 
             temperature=0.7
+
         )
 
-
         return completion.choices[0].message.content
-
 
     except Exception as e:
 
@@ -502,13 +451,7 @@ def chat_with_glowguide(message, history):
 # ============================================================
 
 custom_css = """
-
-/* ============================================================
-   MAIN BACKGROUND
-   ============================================================ */
-
 body {
-
     background:
         linear-gradient(
             135deg,
@@ -518,11 +461,8 @@ body {
         ) !important;
 }
 
-
 .gradio-container {
-
     max-width: 1150px !important;
-
     margin: auto !important;
 
     background:
@@ -536,227 +476,136 @@ body {
     color: #293248 !important;
 }
 
-
-/* ============================================================
-   HEADER
-   ============================================================ */
-
 .main-header {
-
     text-align: center;
-
     padding: 5px 0 18px 0;
 }
 
-
 .main-title {
-
     font-family: Georgia, serif;
-
     font-size: 34px;
-
     font-weight: 700;
-
     color: #d62d82;
-
     margin-bottom: 8px;
 }
 
-
 .main-subtitle {
-
     font-family: Georgia, serif;
-
     font-size: 19px;
-
     font-weight: 600;
-
     color: #293248;
-
     margin-bottom: 10px;
 }
 
-
 .main-description {
-
     font-size: 14px;
-
     color: #555c70;
-
     line-height: 1.7;
 }
 
-
-/* ============================================================
-   SECTION TITLE
-   ============================================================ */
-
 .section-title {
-
     font-family: Georgia, serif;
-
     font-size: 22px;
-
     font-weight: 700;
-
     color: #8d42a7;
-
     margin: 5px 0 5px 0;
 }
 
-
 .section-description {
-
     font-size: 13px;
-
     color: #666b78;
-
     margin-bottom: 10px;
 }
 
-
-/* ============================================================
-   REQUIRED AREA
-   ============================================================ */
-
 .required-area {
-
-    background: rgba(255,255,255,0.40) !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,247,251,0.82),
+            rgba(250,239,250,0.72)
+        ) !important;
 
     border: 1px solid #eadce9 !important;
+    border-radius: 14px !important;
+    padding: 16px 18px 18px 18px !important;
 
-    border-radius: 4px !important;
-
-    padding: 10px 14px 12px 14px !important;
+    box-shadow:
+        0 4px 14px rgba(141,66,167,0.06) !important;
 }
-
-
-/* ============================================================
-   INPUT LABELS
-   ============================================================ */
 
 .gradio-container label span {
-
+    font-family: Georgia, serif !important;
     font-size: 13px !important;
-
     font-weight: 600 !important;
-
-    color: #56647d !important;
+    color: #8d42a7 !important;
 }
 
-
-/* ============================================================
-   INPUTS
-   ============================================================ */
-
-.gradio-container input {
-
+.gradio-container input,
+.gradio-container textarea,
+.gradio-container select {
     font-size: 13px !important;
+    border-radius: 10px !important;
+    border: 1px solid #e3cfe0 !important;
 
-    border-radius: 4px !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,255,255,0.68),
+            rgba(255,247,251,0.78)
+        ) !important;
 
-    border: 1px solid #dcdce6 !important;
-
-    background: rgba(255,255,255,0.70) !important;
+    color: #293248 !important;
 }
-
-
-.gradio-container .wrap {
-
-    border-radius: 4px !important;
-
-    border-color: #dcdce6 !important;
-}
-
-
-/* ============================================================
-   DROPDOWN
-   ============================================================ */
 
 .gradio-container select {
-
-    font-size: 13px !important;
+    min-height: 40px !important;
 }
-
-
-/* ============================================================
-   OPTIONAL AREA
-   ============================================================ */
 
 .optional-area {
-
-    background: rgba(255,255,255,0.38) !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,247,251,0.72),
+            rgba(250,239,250,0.62)
+        ) !important;
 
     border: 1px solid #e6dce7 !important;
-
-    border-radius: 4px !important;
-
-    margin-top: 10px !important;
-
-    margin-bottom: 12px !important;
+    border-radius: 14px !important;
+    margin-top: 12px !important;
+    margin-bottom: 14px !important;
+    padding: 8px 12px !important;
 }
 
-
 .optional-text {
-
     font-size: 13px;
-
     color: #6a6871;
-
     padding: 0 0 8px 0;
 }
 
-
-/* ============================================================
-   BUTTONS
-   ============================================================ */
-
 .generate-btn {
-
     background: #bcdcff !important;
-
     color: #273248 !important;
-
     border: none !important;
-
-    border-radius: 4px !important;
-
+    border-radius: 10px !important;
     min-height: 43px !important;
-
     font-family: Georgia, serif !important;
-
     font-size: 16px !important;
-
     font-weight: 700 !important;
 }
 
-
 .generate-btn:hover {
-
     background: #add2fa !important;
 }
 
-
 .reset-btn {
-
-    border-radius: 4px !important;
-
+    border-radius: 10px !important;
     min-height: 43px !important;
-
     font-family: Georgia, serif !important;
-
     font-size: 15px !important;
-
     font-weight: 600 !important;
 }
 
-
-/* ============================================================
-   REPORT AREA
-   ============================================================ */
-
 .output-area {
-
     background:
         linear-gradient(
             135deg,
@@ -765,242 +614,137 @@ body {
         ) !important;
 
     border: none !important;
-
     padding: 4px 0 15px 0 !important;
-
     color: #293248 !important;
-
     font-size: 14px !important;
-
     line-height: 1.65 !important;
 }
 
-
-/* ============================================================
-   REPORT TITLE
-   ============================================================ */
-
 .report-title {
-
     text-align: center;
-
     font-family: Georgia, serif;
-
     font-size: 27px;
-
     font-weight: 700;
-
     color: #d62d82;
-
     margin: 5px 0 20px 0;
 }
 
-
-/* ============================================================
-   REPORT HEADINGS
-   ============================================================ */
-
 .output-area h3 {
-
     text-align: center !important;
-
     font-family: Georgia, serif !important;
-
     font-size: 19px !important;
-
     color: #d02f82 !important;
-
     margin-top: 24px !important;
-
     margin-bottom: 10px !important;
+    padding: 7px 12px !important;
+    border-radius: 9px !important;
+    background: rgba(255,247,251,0.58) !important;
 }
 
-
 .output-area h2 {
-
     text-align: center !important;
-
     font-family: Georgia, serif !important;
-
     font-size: 20px !important;
-
     color: #8d42a7 !important;
 }
 
-
 .output-area h4 {
-
     font-family: Georgia, serif !important;
-
     color: #a64b88 !important;
-
     font-size: 16px !important;
 }
 
-
-/* ============================================================
-   REPORT TEXT
-   ============================================================ */
-
 .output-area p {
-
     font-size: 13.5px !important;
-
     line-height: 1.65 !important;
-
     margin-bottom: 7px !important;
 }
 
-
 .output-area li {
-
     font-size: 13.5px !important;
-
     line-height: 1.6 !important;
-
     margin-bottom: 4px !important;
 }
 
-
-/* ============================================================
-   ROUTINE RESULT
-   ============================================================ */
-
 .result-heading {
-
     text-align: center;
-
     font-family: Georgia, serif;
-
     font-size: 21px;
-
     font-weight: 700;
-
     color: #8d42a7;
-
     margin-top: 8px;
 }
-
 
 .routine-name {
-
     text-align: center;
-
     font-family: Georgia, serif;
-
     font-size: 21px;
-
     font-weight: 700;
-
     color: #293248;
-
     margin-top: 8px;
 }
 
-
 .confidence {
-
     text-align: center;
-
     font-size: 13px;
-
     color: #646979;
-
     margin-top: 7px;
-
     margin-bottom: 15px;
 }
 
-
-/* ============================================================
-   HORIZONTAL LINE
-   ============================================================ */
-
 .output-area hr {
-
     border: none;
-
     border-top: 1px solid #e2d8e2;
-
     margin: 18px 0;
 }
 
-
-/* ============================================================
-   DISCLAIMER
-   ============================================================ */
-
 .disclaimer {
-
     font-size: 11.5px;
-
     line-height: 1.5;
-
     color: #6c6c75;
-
     text-align: center;
-
     margin-top: 15px;
 }
 
-
-/* ============================================================
-   ERROR
-   ============================================================ */
-
 .error-box {
-
     color: #8b315e;
-
     font-size: 14px;
+    text-align: center;
+    padding: 20px;
 }
-
-
-/* ============================================================
-   CHAT
-   ============================================================ */
 
 .chat-area {
-
-    background: rgba(255,255,255,0.30) !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,247,251,0.82),
+            rgba(250,239,250,0.72)
+        ) !important;
 
     border: 1px solid #eadce9 !important;
-
-    border-radius: 6px !important;
-
-    padding: 12px !important;
+    border-radius: 14px !important;
+    padding: 16px !important;
 }
-
-
-.chat-area textarea {
-
-    font-size: 13px !important;
-}
-
-
-/* ============================================================
-   TABS
-   ============================================================ */
 
 .tab-nav button {
-
+    font-family: Georgia, serif !important;
     font-size: 13px !important;
-
     font-weight: 600 !important;
-
-    border-radius: 4px !important;
+    color: #8d42a7 !important;
+    border-radius: 10px 10px 0 0 !important;
+    padding: 9px 16px !important;
+    background: rgba(255,247,251,0.35) !important;
 }
 
-
-/* ============================================================
-   FOOTER
-   ============================================================ */
+.tab-nav button.selected {
+    color: #d62d82 !important;
+    background: rgba(255,247,251,0.72) !important;
+    border-color: #eadce9 !important;
+}
 
 footer {
-
     display: none !important;
 }
-
 """
 
 
@@ -1008,14 +752,7 @@ footer {
 # 7. GRADIO INTERFACE
 # ============================================================
 
-with gr.Blocks(
-    title="GlowGuide AI"
-) as app:
-
-
-    # ========================================================
-    # HEADER
-    # ========================================================
+with gr.Blocks(title="GlowGuide AI") as app:
 
     gr.HTML(
         """
@@ -1044,20 +781,9 @@ with gr.Blocks(
         """
     )
 
-
-    # ========================================================
-    # TABS
-    # ========================================================
-
     with gr.Tabs():
 
-
-        # ====================================================
-        # REPORT TAB
-        # ====================================================
-
         with gr.Tab("📋 Skincare Report Generator"):
-
 
             gr.HTML(
                 """
@@ -1072,28 +798,19 @@ with gr.Blocks(
                 """
             )
 
-
-            # ------------------------------------------------
-            # REQUIRED INPUTS
-            # ------------------------------------------------
-
-            with gr.Column(
-                elem_classes=["required-area"]
-            ):
+            with gr.Column(elem_classes=["required-area"]):
 
                 with gr.Row():
 
                     age = gr.Number(
-                        label="Age *",
+                        label="Age",
                         minimum=15,
                         maximum=60,
                         precision=0,
                         value=None
                     )
 
-
                     skin = gr.Dropdown(
-
                         choices=[
                             "Combination",
                             "Dry",
@@ -1101,17 +818,13 @@ with gr.Blocks(
                             "Oily",
                             "Sensitive"
                         ],
-
-                        label="Skin Type *",
-
+                        label="Skin Type",
                         value=None
                     )
-
 
                 with gr.Row():
 
                     concern = gr.Dropdown(
-
                         choices=[
                             "Acne",
                             "Dryness",
@@ -1122,44 +835,31 @@ with gr.Blocks(
                             "Pigmentation",
                             "Uneven Texture"
                         ],
-
-                        label="Skin Concern *",
-
+                        label="Skin Concern",
                         value=None
                     )
 
-
                     budget = gr.Dropdown(
-
                         choices=[
                             "Under ₹500",
                             "₹500–1000",
                             "₹1000–2000",
                             "Above ₹2000"
                         ],
-
-                        label="Budget *",
-
+                        label="Budget",
                         value=None
                     )
 
-
-                sensitive = gr.Dropdown(
-
+                season = gr.Dropdown(
                     choices=[
-                        "No",
-                        "Yes"
+                        "Monsoon",
+                        "Spring",
+                        "Summer",
+                        "Winter"
                     ],
-
-                    label="Sensitive Skin *",
-
+                    label="Season",
                     value=None
                 )
-
-
-            # ------------------------------------------------
-            # OPTIONAL INPUTS
-            # ------------------------------------------------
 
             with gr.Accordion(
                 "＋ Add More Details (Optional)",
@@ -1170,141 +870,85 @@ with gr.Blocks(
                 gr.HTML(
                     """
                     <div class="optional-text">
-                        These details are optional. You can generate
-                        your report without filling them. They simply
-                        help GlowGuide make the recommendation more
-                        personalized.
+                        These lifestyle details are optional. You can
+                        generate your report without filling them.
+                        They simply help GlowGuide make the
+                        recommendation more personalized.
                     </div>
                     """
                 )
 
-
                 with gr.Row():
 
-                    season = gr.Dropdown(
-
-                        choices=[
-                            "Monsoon",
-                            "Spring",
-                            "Summer",
-                            "Winter"
-                        ],
-
-                        label="Season",
-
-                        value=None
-                    )
-
-
                     water = gr.Dropdown(
-
                         choices=[
                             "Less than 1 L",
                             "1–2 L",
                             "More than 2 L"
                         ],
-
                         label="Water Intake",
-
                         value=None
                     )
 
-
-                with gr.Row():
-
                     sleep = gr.Dropdown(
-
                         choices=[
                             "Less than 6 hrs",
                             "6–8 hrs",
                             "More than 8 hrs"
                         ],
-
                         label="Sleep Duration",
-
                         value=None
                     )
 
+                with gr.Row():
 
                     sunscreen = gr.Dropdown(
-
                         choices=[
                             "Never",
                             "Sometimes",
                             "Always"
                         ],
-
                         label="Sunscreen Usage",
-
                         value=None
                     )
 
-
-                with gr.Row():
-
                     makeup = gr.Dropdown(
-
                         choices=[
                             "Never",
                             "Rarely",
                             "Occasionally",
                             "Daily"
                         ],
-
                         label="Makeup Usage",
-
                         value=None
                     )
 
-
-                    routine = gr.Dropdown(
-
-                        choices=[
-                            "No Routine",
-                            "Basic",
-                            "Regular",
-                            "Advanced"
-                        ],
-
-                        label="Current Routine",
-
-                        value=None
-                    )
-
-
-            # ------------------------------------------------
-            # BUTTONS
-            # ------------------------------------------------
+                routine = gr.Dropdown(
+                    choices=[
+                        "No Routine",
+                        "Basic",
+                        "Regular",
+                        "Advanced"
+                    ],
+                    label="Current Routine",
+                    value=None
+                )
 
             with gr.Row():
 
                 generate_button = gr.Button(
-
                     "✨ Generate GlowGuide Report",
-
                     variant="primary",
-
                     elem_classes=["generate-btn"],
-
                     scale=4
                 )
 
-
                 reset_button = gr.Button(
-
                     "🔄 Reset",
-
                     variant="secondary",
-
                     elem_classes=["reset-btn"],
-
                     scale=1
                 )
-
-
-            # ------------------------------------------------
-            # OUTPUT HEADING
-            # ------------------------------------------------
 
             gr.HTML(
                 """
@@ -1314,11 +958,8 @@ with gr.Blocks(
                 """
             )
 
-
             output = gr.Markdown(
-
                 value="""
-
 <div class="report-title">
 🌸 Welcome to GlowGuide AI
 </div>
@@ -1333,65 +974,40 @@ Fill in the <b>5 required details</b> and click
 Additional lifestyle details are optional.
 
 </div>
-
                 """,
-
                 elem_classes=["output-area"]
             )
 
-
-            # ------------------------------------------------
-            # GENERATE BUTTON
-            # ------------------------------------------------
-
             generate_button.click(
-
                 fn=generate_skincare_report,
-
                 inputs=[
-
                     age,
                     skin,
                     concern,
                     budget,
-                    sensitive,
-
                     season,
                     water,
                     sleep,
                     sunscreen,
                     makeup,
                     routine
-
                 ],
-
                 outputs=output
             )
 
-
-            # ------------------------------------------------
-            # RESET BUTTON
-            # ------------------------------------------------
-
             reset_button.click(
-
                 fn=lambda: (
-
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-
                     None,
                     None,
                     None,
                     None,
                     None,
                     None,
-
+                    None,
+                    None,
+                    None,
+                    None,
                     """
-
 <div class="report-title">
 🌸 Welcome to GlowGuide AI
 </div>
@@ -1406,40 +1022,25 @@ Fill in the <b>5 required details</b> and click
 Additional lifestyle details are optional.
 
 </div>
-
                     """
-
                 ),
-
                 inputs=[],
-
                 outputs=[
-
                     age,
                     skin,
                     concern,
                     budget,
-                    sensitive,
-
                     season,
                     water,
                     sleep,
                     sunscreen,
                     makeup,
                     routine,
-
                     output
-
                 ]
             )
 
-
-        # ====================================================
-        # CHATBOT TAB
-        # ====================================================
-
         with gr.Tab("💬 Skincare Assistant Q&A"):
-
 
             gr.HTML(
                 """
@@ -1455,52 +1056,30 @@ Additional lifestyle details are optional.
                 """
             )
 
-
-            with gr.Column(
-                elem_classes=["chat-area"]
-            ):
+            with gr.Column(elem_classes=["chat-area"]):
 
                 gr.ChatInterface(
-
                     fn=chat_with_glowguide,
-
                     title="🌸 GlowGuide AI Assistant",
-
-                    description=(
-                        "Your personalized AI skincare assistant"
-                    ),
-
+                    description="Your personalized AI skincare assistant",
                     textbox=gr.Textbox(
-
                         placeholder=(
                             "e.g. Can I use Vitamin C "
                             "and Niacinamide together?"
                         )
-
                     ),
-
                     examples=[
-
                         "What skincare routine is good for oily skin?",
-
                         "What ingredients help with pigmentation?",
-
                         "How should I build a basic skincare routine?",
-
                         "Why is sunscreen important?",
-
                         "Can I use Vitamin C and Niacinamide together?"
-
                     ]
                 )
 
 
 # ============================================================
-# 8. LAUNCH
-# ============================================================
-
-# ============================================================
-# 8. LAUNCH
+# 8. LAUNCH - RENDER COMPATIBLE
 # ============================================================
 
 if __name__ == "__main__":
