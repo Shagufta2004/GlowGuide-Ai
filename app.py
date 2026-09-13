@@ -10,8 +10,14 @@ from groq import Groq
 # 1. LOAD MODEL AND ENCODERS
 # ============================================================
 
-ml_model = joblib.load("skincare_model.pkl")
-label_encoders = joblib.load("label_encoders.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+ml_model = joblib.load(
+    os.path.join(BASE_DIR, "skincare_model.pkl")
+)
+label_encoders = joblib.load(
+    os.path.join(BASE_DIR, "label_encoders.pkl")
+)
 
 
 # ============================================================
@@ -1493,9 +1499,17 @@ Additional lifestyle details are optional.
 # 8. LAUNCH
 # ============================================================
 
+# ============================================================
+# 8. LAUNCH
+# ============================================================
+
 if __name__ == "__main__":
 
+    port = int(os.environ.get("PORT", 7860))
+
     app.launch(
+        server_name="0.0.0.0",
+        server_port=port,
 
         theme=gr.themes.Soft(
             primary_hue="purple",
